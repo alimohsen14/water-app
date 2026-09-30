@@ -11,3 +11,63 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+
+model Meter {
+  id                String   @id @default(cuid())
+  devEUI            String   @unique
+  meterId          String   @unique
+  unit             String
+  currentReading   Decimal  @default(0)
+  batteryPercentage Int?
+  valveStatus      String?
+  lastReadingAt    DateTime?
+
+  readings          Reading[]
+  dailyConsumptions DailyConsumption[]
+  alerts            Alert[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Reading {
+  id                String   @id @default(cuid())
+  meterId           String
+  meter             Meter    @relation(fields: [meterId], references: [id])
+  reading           Decimal
+  timestamp         DateTime
+  batteryPercentage Int?
+  valveStatus       String?
+  rawPayload        Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([meterId])
+}
+
+model DailyConsumption {
+  id          String   @id @default(cuid())
+  meterId     String
+  meter       Meter    @relation(fields: [meterId], references: [id])
+  date        DateTime @db.Date
+  consumption Decimal
+
+  createdAt DateTime @default(now())
+
+  @@unique([meterId, date])
+  @@index([meterId])
+}
+
+model Alert {
+  id        String   @id @default(cuid())
+  meterId   String
+  meter     Meter    @relation(fields: [meterId], references: [id])
+  type      String
+  timestamp DateTime
+  isActive  Boolean  @default(true)
+  rawValue  String?
+
+  createdAt DateTime @default(now())
+
+  @@index([meterId])
+}
