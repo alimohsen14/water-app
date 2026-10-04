@@ -21,6 +21,11 @@ export class HomeController {
     return this.homeService.getDailyConsumption(devEUI, month);
   }
 
+  @Get(':devEUI/meter-details')
+  async meterDetails(@Param('devEUI') devEUI: string) {
+    return this.homeService.getMeterDetails(devEUI);
+  }
+
   @Get(':devEUI')
   async summary(@Param('devEUI') devEUI: string, @Query('date') date?: string) {
     return this.homeService.getSummary(devEUI, date);
