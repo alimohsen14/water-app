@@ -31,6 +31,39 @@
 $ pnpm install
 ```
 
+## Monthly consumption API
+
+```http
+GET /api/home/:devEUI/monthly-consumption?year=2026
+```
+
+`year` is optional and defaults to the current year in `Asia/Gaza`. When supplied,
+it must be a four-digit year from 1000 to 9999. The meter is resolved by `devEUI`,
+and the response uses its `meterId` and `unit`, matching the Home summary API.
+
+The response contains `devEUI`, `meterId`, `unit`, `timezone`, `year`, `months`,
+and `summary`:
+
+- `months`: exactly 12 entries in calendar order, each containing `month`
+  (`YYYY-MM`), `consumption` (number or `null`), `recordedDays`, and `isPartial`.
+- Monthly consumption is the sum of `DailyConsumption.consumption` for that
+  calendar month. Stored dates already represent Gaza calendar days and are not
+  timezone-shifted again. Dates after today in Gaza are excluded.
+- A month without records returns `null`, not zero. Recorded zero consumption
+  remains zero. `recordedDays` counts stored daily records, not estimated coverage.
+- `isPartial` is true only for the current calendar month in Gaza. It does not
+  indicate whether historical daily coverage is complete.
+- `summary.highestMonth` and `summary.lowestMonth` contain `{ month, consumption }`,
+  or `null` when there are no records. Ties select the earliest month.
+- `summary.averageMonthlyConsumption` is the sum of monthly totals divided by
+  `summary.monthsIncluded` (the number of months with records), not an average of
+  daily values. It is `null` when no months have records.
+- The current month-to-date total participates in the chart and statistics.
+  Missing and future months do not participate.
+
+Invalid years return HTTP 400. Unknown meters return HTTP 404. An existing meter
+without data returns HTTP 200 with 12 empty month entries and null statistics.
+
 ## Compile and run the project
 
 ```bash

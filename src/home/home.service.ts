@@ -1,15 +1,119 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import {
-  addDays,
-  startOfGazaDay,
-} from '../common/timezone.util.js';
+import { addDays, startOfGazaDay } from '../common/timezone.util.js';
 import { HomeSummaryDto } from './dto/home-summary.dto.js';
+import {
+  MonthlyConsumptionDto,
+  MonthlyConsumptionExtremeDto,
+} from './dto/monthly-consumption.dto.js';
 
 @Injectable()
 export class HomeService {
   constructor(private readonly prisma: PrismaService) {}
+
+  async getMonthlyConsumption(
+    devEUI: string,
+    year?: string,
+  ): Promise<MonthlyConsumptionDto> {
+    const today = startOfGazaDay();
+    const selectedYear =
+      year === undefined ? today.getUTCFullYear() : this.parseYear(year);
+    const meter = await this.prisma.meter.findUnique({
+      where: { devEUI },
+    });
+
+    if (!meter) {
+      throw new NotFoundException(`No meter found for devEUI ${devEUI}`);
+    }
+
+    const yearStart = new Date(Date.UTC(selectedYear, 0, 1));
+    const nextYearStart = new Date(Date.UTC(selectedYear + 1, 0, 1));
+    const tomorrow = addDays(today, 1);
+    const rows = await this.prisma.dailyConsumption.findMany({
+      where: {
+        meterId: meter.id,
+        date: {
+          gte: yearStart,
+          lt: nextYearStart < tomorrow ? nextYearStart : tomorrow,
+        },
+      },
+      select: { date: true, consumption: true },
+    });
+
+    const buckets = Array.from({ length: 12 }, () => ({
+      total: new Prisma.Decimal(0),
+      recordedDays: 0,
+    }));
+    for (const row of rows) {
+      // @db.Date already represents a Gaza calendar day; do not shift it again.
+      const bucket = buckets[row.date.getUTCMonth()];
+      bucket.total = bucket.total.plus(row.consumption);
+      bucket.recordedDays++;
+    }
+
+    let highestIndex: number | null = null;
+    let lowestIndex: number | null = null;
+    let total = new Prisma.Decimal(0);
+    let monthsIncluded = 0;
+    const months = buckets.map((bucket, index) => {
+      if (bucket.recordedDays > 0) {
+        total = total.plus(bucket.total);
+        monthsIncluded++;
+        if (
+          highestIndex === null ||
+          bucket.total.gt(buckets[highestIndex].total)
+        ) {
+          highestIndex = index;
+        }
+        if (
+          lowestIndex === null ||
+          bucket.total.lt(buckets[lowestIndex].total)
+        ) {
+          lowestIndex = index;
+        }
+      }
+
+      return {
+        month: `${selectedYear}-${String(index + 1).padStart(2, '0')}`,
+        consumption:
+          bucket.recordedDays > 0 ? this.toNumber(bucket.total) : null,
+        recordedDays: bucket.recordedDays,
+        isPartial:
+          selectedYear === today.getUTCFullYear() &&
+          index === today.getUTCMonth(),
+      };
+    });
+    const extreme = (
+      index: number | null,
+    ): MonthlyConsumptionExtremeDto | null =>
+      index === null
+        ? null
+        : {
+            month: months[index].month,
+            consumption: this.toNumber(buckets[index].total),
+          };
+
+    return {
+      devEUI: meter.devEUI,
+      meterId: meter.meterId,
+      unit: meter.unit,
+      timezone: 'Asia/Gaza',
+      year: selectedYear,
+      months,
+      summary: {
+        highestMonth: extreme(highestIndex),
+        lowestMonth: extreme(lowestIndex),
+        averageMonthlyConsumption:
+          monthsIncluded > 0 ? this.toNumber(total.div(monthsIncluded)) : null,
+        monthsIncluded,
+      },
+    };
+  }
 
   async getSummary(devEUI: string, date?: string): Promise<HomeSummaryDto> {
     const meter = await this.prisma.meter.findUnique({
@@ -59,6 +163,15 @@ export class HomeService {
 
   private toNumber(value: Prisma.Decimal | null | undefined): number {
     return value != null ? value.toNumber() : 0;
+  }
+
+  private parseYear(year: string): number {
+    if (typeof year !== 'string' || !/^[1-9]\d{3}$/.test(year)) {
+      throw new BadRequestException(
+        'year must be a four-digit year between 1000 and 9999',
+      );
+    }
+    return Number(year);
   }
 
   // Parses a YYYY-MM-DD test override into the matching wall-clock day start.
