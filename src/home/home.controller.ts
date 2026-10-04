@@ -5,11 +5,16 @@ import { HomeService } from './home.service.js';
 export class HomeController {
   constructor(private readonly homeService: HomeService) {}
 
-  @Get(':devEUI')
-  async summary(
+  @Get(':devEUI/monthly-consumption')
+  async monthlyConsumption(
     @Param('devEUI') devEUI: string,
-    @Query('date') date?: string,
+    @Query('year') year?: string,
   ) {
+    return this.homeService.getMonthlyConsumption(devEUI, year);
+  }
+
+  @Get(':devEUI')
+  async summary(@Param('devEUI') devEUI: string, @Query('date') date?: string) {
     return this.homeService.getSummary(devEUI, date);
   }
 }
