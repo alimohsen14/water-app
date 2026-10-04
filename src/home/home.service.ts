@@ -11,6 +11,7 @@ import {
   MonthlyConsumptionDto,
   MonthlyConsumptionExtremeDto,
 } from './dto/monthly-consumption.dto.js';
+import { DailyConsumptionDto } from './dto/daily-consumption.dto.js';
 
 @Injectable()
 export class HomeService {
@@ -115,6 +116,68 @@ export class HomeService {
     };
   }
 
+  async getDailyConsumption(
+    devEUI: string,
+    month: string | undefined,
+  ): Promise<DailyConsumptionDto> {
+    const selectedMonth = this.parseMonth(month);
+    const meter = await this.prisma.meter.findUnique({
+      where: { devEUI },
+    });
+
+    if (!meter) {
+      throw new NotFoundException(`No meter found for devEUI ${devEUI}`);
+    }
+
+    const monthStart = new Date(
+      Date.UTC(selectedMonth.year, selectedMonth.month - 1, 1),
+    );
+    const nextMonthStart = new Date(
+      Date.UTC(selectedMonth.year, selectedMonth.month, 1),
+    );
+    const rows = await this.prisma.dailyConsumption.findMany({
+      where: {
+        meterId: meter.id,
+        date: { gte: monthStart, lt: nextMonthStart },
+      },
+      select: { date: true, consumption: true },
+      orderBy: { date: 'desc' },
+    });
+    let highestIndex: number | null = null;
+    let lowestIndex: number | null = null;
+    for (const [index, row] of rows.entries()) {
+      if (
+        highestIndex === null ||
+        row.consumption.gt(rows[highestIndex].consumption)
+      ) {
+        highestIndex = index;
+      }
+      if (
+        lowestIndex === null ||
+        row.consumption.lt(rows[lowestIndex].consumption)
+      ) {
+        lowestIndex = index;
+      }
+    }
+    const toEntry = (row: (typeof rows)[number]) => ({
+      date: row.date.toISOString().slice(0, 10),
+      consumption: this.toNumber(row.consumption),
+    });
+
+    return {
+      devEUI: meter.devEUI,
+      meterId: meter.meterId,
+      unit: meter.unit,
+      timezone: 'Asia/Gaza',
+      month: `${selectedMonth.year}-${String(selectedMonth.month).padStart(2, '0')}`,
+      days: rows.map(toEntry),
+      highestConsumption:
+        highestIndex === null ? null : toEntry(rows[highestIndex]),
+      lowestConsumption:
+        lowestIndex === null ? null : toEntry(rows[lowestIndex]),
+    };
+  }
+
   async getSummary(devEUI: string, date?: string): Promise<HomeSummaryDto> {
     const meter = await this.prisma.meter.findUnique({
       where: { devEUI },
@@ -133,21 +196,22 @@ export class HomeService {
       Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 1, 1),
     );
 
-    const [todayRow, yesterdayRow, monthAggregate] = await this.prisma.$transaction([
-      this.prisma.dailyConsumption.findUnique({
-        where: { meterId_date: { meterId: meter.id, date: today } },
-      }),
-      this.prisma.dailyConsumption.findUnique({
-        where: { meterId_date: { meterId: meter.id, date: yesterday } },
-      }),
-      this.prisma.dailyConsumption.aggregate({
-        where: {
-          meterId: meter.id,
-          date: { gte: monthStart, lt: nextMonthStart },
-        },
-        _avg: { consumption: true },
-      }),
-    ]);
+    const [todayRow, yesterdayRow, monthAggregate] =
+      await this.prisma.$transaction([
+        this.prisma.dailyConsumption.findUnique({
+          where: { meterId_date: { meterId: meter.id, date: today } },
+        }),
+        this.prisma.dailyConsumption.findUnique({
+          where: { meterId_date: { meterId: meter.id, date: yesterday } },
+        }),
+        this.prisma.dailyConsumption.aggregate({
+          where: {
+            meterId: meter.id,
+            date: { gte: monthStart, lt: nextMonthStart },
+          },
+          _avg: { consumption: true },
+        }),
+      ]);
 
     return {
       devEUI: meter.devEUI,
@@ -174,6 +238,27 @@ export class HomeService {
     return Number(year);
   }
 
+  private parseMonth(month: string | undefined): {
+    year: number;
+    month: number;
+  } {
+    const match =
+      typeof month === 'string' && /^([1-9]\d{3})-(\d{2})$/.exec(month);
+    if (!match) {
+      throw new BadRequestException(
+        'month must be in YYYY-MM format with a year between 1000 and 9999',
+      );
+    }
+
+    const year = Number(match[1]);
+    const monthNumber = Number(match[2]);
+    if (monthNumber < 1 || monthNumber > 12) {
+      throw new BadRequestException(`Invalid month: ${month}`);
+    }
+
+    return { year, month: monthNumber };
+  }
+
   // Parses a YYYY-MM-DD test override into the matching wall-clock day start.
   private parseGazaDate(date: string): Date {
     const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
@@ -182,7 +267,9 @@ export class HomeService {
     }
 
     const [, year, month, day] = match;
-    const parsed = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+    const parsed = new Date(
+      Date.UTC(Number(year), Number(month) - 1, Number(day)),
+    );
 
     if (
       parsed.getUTCFullYear() !== Number(year) ||
