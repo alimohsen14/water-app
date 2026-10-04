@@ -13,6 +13,14 @@ export class HomeController {
     return this.homeService.getMonthlyConsumption(devEUI, year);
   }
 
+  @Get(':devEUI/daily-consumption')
+  async dailyConsumption(
+    @Param('devEUI') devEUI: string,
+    @Query('month') month?: string,
+  ) {
+    return this.homeService.getDailyConsumption(devEUI, month);
+  }
+
   @Get(':devEUI')
   async summary(@Param('devEUI') devEUI: string, @Query('date') date?: string) {
     return this.homeService.getSummary(devEUI, date);

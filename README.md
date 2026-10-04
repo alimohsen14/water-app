@@ -64,6 +64,23 @@ and `summary`:
 Invalid years return HTTP 400. Unknown meters return HTTP 404. An existing meter
 without data returns HTTP 200 with 12 empty month entries and null statistics.
 
+## Daily consumption API
+
+```http
+GET /api/home/:devEUI/daily-consumption?month=2026-10
+```
+
+`month` is required and must be a valid calendar month in `YYYY-MM` format.
+The response includes `devEUI`, `meterId`, `unit`, `timezone`, `month`, and
+`days`. `days` contains only existing `DailyConsumption` records for the
+selected month, ordered newest to oldest. Each entry contains its date as
+`YYYY-MM-DD` and its numeric consumption. Recorded zero values are returned as
+zero; dates without records are omitted rather than represented as zero.
+`highestConsumption` and `lowestConsumption` each contain the recorded date and
+consumption for the month's maximum and minimum, respectively, or `null` if the
+month has no records. If multiple days tie, the newest date is returned.
+Unknown meters return HTTP 404, and invalid or missing months return HTTP 400.
+
 ## Compile and run the project
 
 ```bash
