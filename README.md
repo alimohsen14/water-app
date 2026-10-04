@@ -81,6 +81,16 @@ consumption for the month's maximum and minimum, respectively, or `null` if the
 month has no records. If multiple days tie, the newest date is returned.
 Unknown meters return HTTP 404, and invalid or missing months return HTTP 400.
 
+## Meter details API
+
+```http
+GET /api/home/:devEUI/meter-details
+```
+
+Returns `meterNumber`, `lastUpdate`, `batteryPercentage`, and `valveStatus`
+from the meter record. `lastUpdate`, `batteryPercentage`, and `valveStatus` are
+`null` when no value has been received. Unknown meters return HTTP 404.
+
 ## Compile and run the project
 
 ```bash

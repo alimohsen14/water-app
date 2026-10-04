@@ -28,6 +28,8 @@ describe('Home consumption', () => {
     unit: 'm3',
     currentReading: new Prisma.Decimal('123.45'),
     lastReadingAt: new Date('2026-10-04T10:00:00Z'),
+    batteryPercentage: 86,
+    valveStatus: 'open',
   };
   const prisma = {
     meter: {
@@ -465,5 +467,55 @@ describe('Home consumption', () => {
       lastReadingAt: meter.lastReadingAt.toISOString(),
     });
     expect(prisma.dailyConsumption.findMany).not.toHaveBeenCalled();
+  });
+
+  it('returns only the stored meter details over HTTP', async () => {
+    const response = await request(app.getHttpServer())
+      .get(`/api/home/${meter.devEUI}/meter-details`)
+      .expect(200);
+
+    expect(response.body).toEqual({
+      meterNumber: meter.meterId,
+      lastUpdate: meter.lastReadingAt.toISOString(),
+      batteryPercentage: meter.batteryPercentage,
+      valveStatus: meter.valveStatus,
+    });
+    expect(prisma.meter.findUnique).toHaveBeenCalledWith({
+      where: { devEUI: meter.devEUI },
+      select: {
+        meterId: true,
+        lastReadingAt: true,
+        batteryPercentage: true,
+        valveStatus: true,
+      },
+    });
+  });
+
+  it('returns null for meter telemetry that has not been received', async () => {
+    prisma.meter.findUnique.mockResolvedValue({
+      ...meter,
+      lastReadingAt: null,
+      batteryPercentage: null,
+      valveStatus: null,
+    });
+
+    const response = await request(app.getHttpServer())
+      .get(`/api/home/${meter.devEUI}/meter-details`)
+      .expect(200);
+
+    expect(response.body).toEqual({
+      meterNumber: meter.meterId,
+      lastUpdate: null,
+      batteryPercentage: null,
+      valveStatus: null,
+    });
+  });
+
+  it('returns HTTP 404 for meter details on an unknown meter', async () => {
+    prisma.meter.findUnique.mockResolvedValue(null);
+
+    await request(app.getHttpServer())
+      .get('/api/home/unknown/meter-details')
+      .expect(404);
   });
 });

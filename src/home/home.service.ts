@@ -12,6 +12,7 @@ import {
   MonthlyConsumptionExtremeDto,
 } from './dto/monthly-consumption.dto.js';
 import { DailyConsumptionDto } from './dto/daily-consumption.dto.js';
+import { MeterDetailsDto } from './dto/meter-details.dto.js';
 
 @Injectable()
 export class HomeService {
@@ -222,6 +223,29 @@ export class HomeService {
       yesterdayConsumption: this.toNumber(yesterdayRow?.consumption),
       currentMonthDailyAverage: this.toNumber(monthAggregate._avg.consumption),
       lastReadingAt: meter.lastReadingAt,
+    };
+  }
+
+  async getMeterDetails(devEUI: string): Promise<MeterDetailsDto> {
+    const meter = await this.prisma.meter.findUnique({
+      where: { devEUI },
+      select: {
+        meterId: true,
+        lastReadingAt: true,
+        batteryPercentage: true,
+        valveStatus: true,
+      },
+    });
+
+    if (!meter) {
+      throw new NotFoundException(`No meter found for devEUI ${devEUI}`);
+    }
+
+    return {
+      meterNumber: meter.meterId,
+      lastUpdate: meter.lastReadingAt,
+      batteryPercentage: meter.batteryPercentage,
+      valveStatus: meter.valveStatus,
     };
   }
 
