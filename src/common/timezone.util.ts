@@ -67,3 +67,43 @@ export function toGazaWallClock(date: Date): Date {
   return new Date(date.getTime() + gazaOffsetMinutes(date) * 60_000);
 }
 
+// Midnight (date-only) of the Asia/Gaza calendar day for the given instant,
+// expressed as a UTC Date to match @db.Date columns stored in wall-clock terms.
+export function startOfGazaDay(date: Date = new Date()): Date {
+  const wall = toGazaWallClock(date);
+  return new Date(
+    Date.UTC(wall.getUTCFullYear(), wall.getUTCMonth(), wall.getUTCDate()),
+  );
+}
+
+// Truncates a value already stored in Gaza wall-clock to date-only (UTC midnight).
+// Use for Reading.timestamp / Meter.lastReadingAt, which are pre-shifted wall-clock.
+export function truncateToUtcDay(date: Date): Date {
+  return new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
+  );
+}
+
+// Adds a whole number of calendar days to a date-only value.
+export function addDays(date: Date, days: number): Date {
+  return new Date(
+    Date.UTC(
+      date.getUTCFullYear(),
+      date.getUTCMonth(),
+      date.getUTCDate() + days,
+    ),
+  );
+}
+
+// First day of the Asia/Gaza calendar month for the given instant.
+export function startOfGazaMonth(date: Date = new Date()): Date {
+  const wall = toGazaWallClock(date);
+  return new Date(Date.UTC(wall.getUTCFullYear(), wall.getUTCMonth(), 1));
+}
+
+// First day of the month following the Asia/Gaza calendar month.
+export function startOfNextGazaMonth(date: Date = new Date()): Date {
+  const wall = toGazaWallClock(date);
+  return new Date(Date.UTC(wall.getUTCFullYear(), wall.getUTCMonth() + 1, 1));
+}
+
